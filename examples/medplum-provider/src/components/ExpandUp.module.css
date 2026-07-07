@@ -1,0 +1,8 @@
+.icon {
+  transition-property: transform;
+  transition-duration: 0.3s;
+}
+
+.invert {
+  transform: rotate(-180deg);
+}

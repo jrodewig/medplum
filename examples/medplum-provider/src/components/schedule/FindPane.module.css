@@ -1,0 +1,16 @@
+.title {
+  /* Keep the title and dismiss button visible while the rest of the content scrolls */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+
+  /* Give a little fade-out of the background color for the content to nicely scroll behind */
+  --bg-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-8));
+  background-color: var(--bg-color);
+  background: linear-gradient(to bottom, var(--bg-color) 75%, oklch(from var(--bg-color) l c h / 0));
+}
+
+.button {
+  color: light-dark(var(--mantine-color-gray-9), var(--mantine-color-gray-5));
+  font-weight: normal;
+}

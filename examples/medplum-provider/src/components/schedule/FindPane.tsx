@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright Orangebot, Inc. and Medplum contributors
 // SPDX-License-Identifier: Apache-2.0
-import { Button, Group, Stack, Text, Title } from '@mantine/core';
+import { Button, Divider, Group, ScrollArea, Stack, Text, Title } from '@mantine/core';
 import type { WithId } from '@medplum/core';
 import { EMPTY, formatDateTime, getReferenceString, isDefined } from '@medplum/core';
 import type { Appointment, Bundle, Encounter, HealthcareService, Patient, Schedule, Slot } from '@medplum/fhirtypes';
@@ -9,12 +9,15 @@ import { IconChevronRight, IconX } from '@tabler/icons-react';
 import type { JSX } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { ExpandUp } from '../../components/ExpandUp';
+import { AvailabilityDisplay } from '../../components/schedule/AvailabilityDisplay';
 import { BookAppointmentForm } from '../../components/schedule/BookAppointmentForm';
 import { useSchedulingStartsAt } from '../../hooks/useSchedulingStartsAt';
 import type { Range } from '../../types/scheduling';
 import { showErrorNotification } from '../../utils/notifications';
 import { hasSchedulingParameters, SchedulingTransientIdentifier } from '../../utils/scheduling';
 import { extractReferencesFromCodeableReferenceLike } from '../../utils/servicetype';
+import classes from './FindPane.module.css';
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -22,6 +25,8 @@ type FindPaneProps = {
   schedule: WithId<Schedule>;
   range: Range;
   onSuccess: (results: { appointment: WithId<Appointment>; slots: WithId<Slot>[] }) => void;
+  healthcareService: WithId<HealthcareService> | undefined;
+  onSelectHealthcareService: (healthcareService: WithId<HealthcareService> | undefined) => void;
   className?: string;
 };
 
@@ -49,8 +54,7 @@ export function FindPane(props: FindPaneProps): JSX.Element | null {
   const navigate = useNavigate();
   const [appointments, setAppointments] = useState<readonly Appointment[] | undefined>(undefined);
   const [chosenAppointment, setChosenAppointment] = useState<Appointment | undefined>(undefined);
-  const [selectedHealthcareService, setSelectedHealthcareService] = useState<WithId<HealthcareService> | undefined>();
-  const { schedule, range, onSuccess } = props;
+  const { schedule, range, healthcareService, onSelectHealthcareService, onSuccess } = props;
 
   const [healthcareServices, setHealthcareServices] = useState<WithId<HealthcareService>[] | undefined>();
 
@@ -79,19 +83,11 @@ export function FindPane(props: FindPaneProps): JSX.Element | null {
     [healthcareServices]
   );
 
-  useEffect(() => {
-    // If there is exactly one option, select it immediately instead of forcing user
-    // to select it
-    if (scheduleableServices?.length === 1) {
-      setSelectedHealthcareService(scheduleableServices[0]);
-    }
-  }, [scheduleableServices]);
-
   // Ensure that we are searching for appointments in the future by at least 30 minutes.
   const earliestSchedulable = useSchedulingStartsAt({ minimumNoticeMinutes: 30 });
 
   useEffect(() => {
-    if (!schedule || !selectedHealthcareService) {
+    if (!schedule || !healthcareService) {
       return () => {};
     }
 
@@ -108,7 +104,7 @@ export function FindPane(props: FindPaneProps): JSX.Element | null {
     const url = medplum.fhirUrl('Appointment', '$find');
     url.searchParams.append('start', start);
     url.searchParams.append('end', end);
-    url.searchParams.append('service-type-reference', getReferenceString(selectedHealthcareService));
+    url.searchParams.append('service-type-reference', getReferenceString(healthcareService));
     url.searchParams.append('schedule', getReferenceString(schedule));
 
     medplum
@@ -140,12 +136,12 @@ export function FindPane(props: FindPaneProps): JSX.Element | null {
         controller.abort();
       }
     };
-  }, [medplum, schedule, selectedHealthcareService, range, earliestSchedulable]);
+  }, [medplum, schedule, healthcareService, range, earliestSchedulable]);
 
   const handleDismiss = useCallback(() => {
-    setSelectedHealthcareService(undefined);
+    onSelectHealthcareService(undefined);
     setAppointments(EMPTY);
-  }, []);
+  }, [onSelectHealthcareService]);
 
   const handleBookSuccess = useCallback(
     async (results: {
@@ -160,24 +156,24 @@ export function FindPane(props: FindPaneProps): JSX.Element | null {
         return;
       }
 
-      setSelectedHealthcareService(undefined);
+      onSelectHealthcareService(undefined);
       setAppointments([]);
       setChosenAppointment(undefined);
       onSuccess(results);
     },
-    [onSuccess, navigate]
+    [onSuccess, onSelectHealthcareService, navigate]
   );
 
   if (!scheduleableServices?.length) {
     return null;
   }
 
-  if (selectedHealthcareService && chosenAppointment) {
+  if (healthcareService && chosenAppointment) {
     return (
       <Stack gap="sm" justify="flex-start" className={props.className}>
         <Title order={4}>
           <Group justify="space-between">
-            <HealthcareServiceDisplay value={selectedHealthcareService} />
+            <HealthcareServiceDisplay value={healthcareService} />
             <Button variant="subtle" onClick={() => setChosenAppointment(undefined)} aria-label="Clear selection">
               <IconX size={20} />
             </Button>
@@ -185,42 +181,51 @@ export function FindPane(props: FindPaneProps): JSX.Element | null {
         </Title>
         <BookAppointmentForm
           appointment={chosenAppointment}
-          healthcareService={selectedHealthcareService}
+          healthcareService={healthcareService}
           onSuccess={handleBookSuccess}
         />
       </Stack>
     );
   }
 
-  if (selectedHealthcareService) {
+  if (healthcareService) {
     return (
-      <Stack gap="sm" justify="flex-start" className={props.className}>
-        <Title order={4}>
-          <Group justify="space-between">
-            <HealthcareServiceDisplay value={selectedHealthcareService} />
-            {scheduleableServices.length > 1 && (
-              <Button variant="subtle" onClick={handleDismiss} aria-label="Clear selection">
-                <IconX size={20} />
+      <Stack gap="sm" justify="space-between" className={props.className}>
+        <ScrollArea>
+          <Stack gap="sm" justify="flex-start">
+            <Title order={4} className={classes.title}>
+              <Group justify="space-between">
+                <HealthcareServiceDisplay value={healthcareService} />
+                {scheduleableServices.length > 1 && (
+                  <Button variant="subtle" onClick={handleDismiss} aria-label="Clear selection">
+                    <IconX size={20} />
+                  </Button>
+                )}
+              </Group>
+            </Title>
+            {(appointments ?? EMPTY).map((appointment) => (
+              <Button
+                key={SchedulingTransientIdentifier.get(appointment)}
+                variant="outline"
+                onClick={() => setChosenAppointment(appointment)}
+                className={classes.button}
+              >
+                {formatDateTime(appointment.start)}
               </Button>
+            ))}
+            {appointments?.length === 0 && (
+              <Text size="sm" c="dimmed" mt="sm">
+                No available appointments found in this calendar range.
+              </Text>
             )}
-          </Group>
-        </Title>
-        {(appointments ?? EMPTY).map((appointment) => (
-          <Button
-            key={SchedulingTransientIdentifier.get(appointment)}
-            variant="outline"
-            color="gray.3"
-            styles={(theme) => ({ label: { fontWeight: 'normal', color: theme.colors.gray[9] } })}
-            onClick={() => setChosenAppointment(appointment)}
-          >
-            {formatDateTime(appointment.start)}
-          </Button>
-        ))}
-        {appointments?.length === 0 && (
-          <Text size="sm" c="dimmed" mt="sm">
-            No available appointments found in this calendar range.
-          </Text>
-        )}
+          </Stack>
+        </ScrollArea>
+        <div>
+          <Divider />
+          <ExpandUp title="Details">
+            <AvailabilityDisplay healthcareService={healthcareService} schedule={schedule} />
+          </ExpandUp>
+        </div>
       </Stack>
     );
   }
@@ -235,7 +240,7 @@ export function FindPane(props: FindPaneProps): JSX.Element | null {
           variant="outline"
           rightSection={<IconChevronRight size={12} />}
           justify="space-between"
-          onClick={() => setSelectedHealthcareService(service)}
+          onClick={() => props.onSelectHealthcareService(service)}
         >
           <HealthcareServiceDisplay value={service} />
         </Button>

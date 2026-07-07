@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright Orangebot, Inc. and Medplum contributors
 // SPDX-License-Identifier: Apache-2.0
-import type { EventApi, EventInput } from '@fullcalendar/react';
+import type { BusinessHoursInput, EventApi, EventInput } from '@fullcalendar/react';
 import FullCalendar, { useCalendarController } from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/react/daygrid';
 import interactionPlugin from '@fullcalendar/react/interaction';
@@ -12,7 +12,7 @@ import timeGridPlugin from '@fullcalendar/react/timegrid';
 import { Button, Group, SegmentedControl, Title, useComputedColorScheme } from '@mantine/core';
 import { useDebouncedCallback } from '@mantine/hooks';
 import { EMPTY, getReferenceString } from '@medplum/core';
-import type { Appointment, Slot } from '@medplum/fhirtypes';
+import type { Appointment, HealthcareServiceAvailableTime, Slot } from '@medplum/fhirtypes';
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import cx from 'clsx';
 import type { JSX } from 'react';
@@ -22,6 +22,25 @@ import { assertNever } from '../utils/assert';
 import classes from './Calendar.module.css';
 
 type ExtendedEvent = { type: 'appointment'; appointment: Appointment } | { type: 'slot'; slot: Slot };
+
+const DayIndexer = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+function availableTimeToBusinessHoursEntry(availableTime: HealthcareServiceAvailableTime): BusinessHoursInput[] {
+  const startTime = availableTime.allDay ? '00:00:00' : availableTime.availableStartTime;
+  const endTime = availableTime.allDay ? '24:00:00' : availableTime.availableEndTime;
+
+  if (!startTime || !endTime || !availableTime.daysOfWeek) {
+    return [];
+  }
+
+  return [
+    {
+      daysOfWeek: availableTime.daysOfWeek.map((day) => DayIndexer.indexOf(day)),
+      startTime: availableTime.availableStartTime,
+      endTime: availableTime.availableEndTime,
+    },
+  ];
+}
 
 function appointmentsToEvents(appointments: Appointment[]): EventInput[] {
   return appointments
@@ -69,6 +88,7 @@ export function Calendar(props: {
   onDoubleClickAppointment?: (appointment: Appointment) => void;
   onRangeChange?: (range: Range) => void;
   className?: string;
+  availableTime?: HealthcareServiceAvailableTime[];
 }): JSX.Element {
   const colorScheme = useComputedColorScheme();
   const controller = useCalendarController();
@@ -139,6 +159,8 @@ export function Calendar(props: {
 
     return [...appointmentsToEvents(props.appointments), ...slotsToEvents(filteredSlots)];
   }, [props.appointments, props.slots]);
+
+  const businessHours = props.availableTime?.map(availableTimeToBusinessHoursEntry).flat();
 
   return (
     <div data-testid="calendar" className={cx(classes.wrapper, props.className)}>
@@ -216,6 +238,7 @@ export function Calendar(props: {
             info.el.addEventListener('dblclick', handleDblClick);
           }
         }}
+        businessHours={businessHours}
       />
     </div>
   );
