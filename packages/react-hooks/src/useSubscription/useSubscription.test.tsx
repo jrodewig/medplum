@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright Orangebot, Inc. and Medplum contributors
 // SPDX-License-Identifier: Apache-2.0
 import { SubscriptionEmitter, generateId } from '@medplum/core';
-import type { Bundle } from '@medplum/fhirtypes';
+import type { Bundle, Project } from '@medplum/fhirtypes';
 import { MockClient } from '@medplum/mock';
 import { act, render, screen } from '@testing-library/react';
 import type { JSX, ReactNode } from 'react';
@@ -87,6 +87,11 @@ describe('useSubscription()', () => {
 
   beforeEach(() => {
     medplum = new MockClient();
+    // `useSubscription` only subscribes when the active project has the `websocket-subscriptions`
+    // feature enabled. The MockClient's `auth/me` response doesn't include a project, so
+    // `getProject()` returns `undefined` by default; stub it with a feature-enabled project.
+    const project: Project = { resourceType: 'Project', features: ['websocket-subscriptions'] };
+    vi.spyOn(medplum, 'getProject').mockReturnValue(project);
   });
 
   function setup(
@@ -551,6 +556,20 @@ describe('useSubscription()', () => {
 
     getProfileSpy.mockRestore();
     subscribeSpy.mockRestore();
+  });
+
+  test('Is a no-op when project is missing the websocket-subscriptions feature', async () => {
+    const getProjectSpy = vi.spyOn(medplum, 'getProject').mockReturnValue({ resourceType: 'Project', features: [] });
+    onTestFinished(() => getProjectSpy.mockRestore());
+
+    const subscribeSpy = vi.spyOn(medplum, 'subscribeToCriteria');
+    onTestFinished(() => subscribeSpy.mockRestore());
+
+    setup(<TestComponent criteria="Communication" />);
+
+    // No subscription should be created while the feature is disabled
+    expect(subscribeSpy).not.toHaveBeenCalled();
+    expect(medplum.getSubscriptionManager().getCriteriaCount()).toEqual(0);
   });
 
   test('WebSocket disconnects and reconnects', async () => {

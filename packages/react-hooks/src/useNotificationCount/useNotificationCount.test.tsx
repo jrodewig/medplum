@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright Orangebot, Inc. and Medplum contributors
 // SPDX-License-Identifier: Apache-2.0
-import type { Communication } from '@medplum/fhirtypes';
+import type { Communication, Project } from '@medplum/fhirtypes';
 import { MockClient } from '@medplum/mock';
 import { act, renderHook } from '@testing-library/react';
 
@@ -18,6 +18,12 @@ describe('useNotificationCount', () => {
 
   beforeEach(() => {
     medplum = new MockClient();
+
+    const project: Project = {
+      resourceType: 'Project',
+      features: ['websocket-subscriptions'],
+    };
+    vi.spyOn(medplum, 'getProject').mockReturnValue(project);
   });
 
   afterAll(() => {
